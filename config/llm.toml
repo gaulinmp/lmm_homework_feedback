@@ -1,0 +1,29 @@
+# LLM role -> provider mapping. Phase 0 ships the all-local default;
+# flip individual roles to a cloud provider as needed (see §6 of the design doc).
+
+[roles.grader]
+provider = "openai_compat"
+base_url = "http://127.0.0.1:8080/v1"
+model    = "qwen3"
+
+[roles.tutor]
+provider = "openai_compat"
+base_url = "http://127.0.0.1:8080/v1"
+model    = "qwen3"
+
+[roles.vision]
+provider = "openai_compat"
+base_url = "http://127.0.0.1:8080/v1"
+model    = "qwen3"
+
+[roles.code_judge]
+provider = "openai_compat"
+base_url = "http://127.0.0.1:8080/v1"
+model    = "qwen3"
+
+# Excel grading depends on Anthropic's Claude Excel skill (see §8).
+# In all-local mode this role is unusable until a fallback is implemented.
+[roles.excel_grader]
+provider = "anthropic"
+model    = "claude-sonnet-4-6"
+api_key_env = "ANTHROPIC_API_KEY"

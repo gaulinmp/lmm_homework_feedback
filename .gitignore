@@ -1,0 +1,25 @@
+# Local data and DB
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets / env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
