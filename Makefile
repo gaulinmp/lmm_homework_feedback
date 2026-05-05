@@ -1,4 +1,20 @@
-.PHONY: install dev test backup load user verify audit init-db
+.PHONY: help install dev test backup load user verify audit init-db
+
+# Default target: show help instead of running install.
+.DEFAULT_GOAL := help
+
+help:
+	@echo "Available targets:"
+	@echo "  help       Show this help message (default)"
+	@echo "  install    Install dependencies via 'uv sync'"
+	@echo "  init-db    Initialize the SQLite database"
+	@echo "  dev        Run the FastAPI app with --reload (override port: 'make dev PORT=9000')"
+	@echo "  test       Run the test suite"
+	@echo "  backup     Backup data/tutor.db into BACKUP_DIR (default: ~/Dropbox/backups/llm_homework_tutor)"
+	@echo "  load       (phase 2 stub)"
+	@echo "  user       (phase 3 stub)"
+	@echo "  verify     (phase 6 stub)"
+	@echo "  audit      (phase 7 stub)"
 
 install:
 	uv sync
@@ -6,8 +22,9 @@ install:
 init-db:
 	uv run python -c "from app.db import init_db; init_db(); print('db initialized')"
 
+PORT ?= 8000
 dev:
-	uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+	uv run uvicorn app.main:app --reload --host 127.0.0.1 --port $(PORT)
 
 test:
 	uv run pytest
