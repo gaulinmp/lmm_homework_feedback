@@ -13,6 +13,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    ENV: str = "dev"
+
     DATA_DIR: Path = PROJECT_ROOT / "data"
     DB_PATH: Path = PROJECT_ROOT / "data" / "tutor.db"
     LLM_CONFIG_PATH: Path = PROJECT_ROOT / "config" / "llm.toml"

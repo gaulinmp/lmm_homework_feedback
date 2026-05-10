@@ -12,7 +12,7 @@ help:
 	@echo "  test       Run the test suite"
 	@echo "  backup     Backup data/tutor.db into BACKUP_DIR (default: ~/Dropbox/backups/llm_homework_tutor)"
 	@echo "  load       Load assignments/*.md into the database"
-	@echo "  user       (phase 3 stub)"
+	@echo "  user       Add a user: 'make user USER=foo [ROLE=admin]'"
 	@echo "  verify     (phase 6 stub)"
 	@echo "  audit      (phase 7 stub)"
 
@@ -41,8 +41,10 @@ load:
 
 # Stubs — wired up in later phases.
 
+ROLE ?= student
 user:
-	@echo "user: not implemented yet (phase 3)"
+	@if [ -z "$(USER)" ]; then echo "usage: make user USER=<username> [ROLE=student|admin]"; exit 1; fi
+	uv run python cli/manage_users.py add --username $(USER) --role $(ROLE)
 
 verify:
 	@echo "verify: not implemented yet (phase 6)"
