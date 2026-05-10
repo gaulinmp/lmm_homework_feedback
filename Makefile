@@ -11,7 +11,7 @@ help:
 	@echo "  dev        Run the FastAPI app with --reload (override port: 'make dev PORT=9000')"
 	@echo "  test       Run the test suite"
 	@echo "  backup     Backup data/tutor.db into BACKUP_DIR (default: ~/Dropbox/backups/llm_homework_tutor)"
-	@echo "  load       (phase 2 stub)"
+	@echo "  load       Load assignments/*.md into the database"
 	@echo "  user       (phase 3 stub)"
 	@echo "  verify     (phase 6 stub)"
 	@echo "  audit      (phase 7 stub)"
@@ -36,9 +36,10 @@ backup:
 	mkdir -p "$(BACKUP_DIR)"
 	sqlite3 data/tutor.db ".backup '$(BACKUP_DIR)/tutor-$$(date +%Y%m%d-%H%M%S).db'"
 
-# Stubs — wired up in later phases.
 load:
-	@echo "load: not implemented yet (phase 2)"
+	uv run python cli/load_assignments.py
+
+# Stubs — wired up in later phases.
 
 user:
 	@echo "user: not implemented yet (phase 3)"
