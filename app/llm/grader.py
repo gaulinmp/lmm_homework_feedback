@@ -21,6 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from app.graders.excel import build_excel_grader_messages
+from app.graders.image import (
+    build_grader_messages_from_vision,
+    build_vision_messages,
+)
+from app.graders.python_code import build_code_judge_messages
 from app.graders.text import PriorTurn, build_grader_messages
 from app.llm.prompts import TUTOR_SYSTEM_PROMPT
 from app.llm.router import LLMRouter
@@ -42,6 +48,7 @@ class GraderState(BaseModel):
     submission_id: Optional[int] = None
     status_after: Optional[str] = None
     prior_turns: list[PriorTurn] = Field(default_factory=list)
+    vision_description: Optional[str] = None
 
 
 def _now_iso() -> str:
@@ -243,29 +250,112 @@ def build_grader_graph(
         return {"prior_turns": prior_turns}
 
     def preprocess(state: GraderState) -> dict[str, Any]:
-        return {}
-
-    def grade(state: GraderState) -> dict[str, Any]:
-        student_text = state.submission_payload.get("text", "")
-        messages = build_grader_messages(
+        qtype = state.question.get("qtype", "text")
+        if qtype != "image":
+            return {}
+        artifact_path = state.submission_payload.get("artifact_path")
+        if not artifact_path:
+            raise ValueError("image submission missing artifact_path")
+        messages = build_vision_messages(
             question_prompt=state.question["prompt_md"],
             rubric=state.question["rubric_md"],
-            student_text=student_text,
-            prior_turns=state.prior_turns,
+            image_path=artifact_path,
         )
         raw = router.invoke(
-            "grader",
+            "vision",
             messages,
-            response_schema=GradeVerdict,
             attempt_id=state.attempt["id"],
         )
+        description = getattr(raw, "content", str(raw)) or ""
+        return {"vision_description": description}
+
+    def grade(state: GraderState) -> dict[str, Any]:
+        qtype = state.question.get("qtype", "text")
+        if qtype == "text":
+            student_text = state.submission_payload.get("text", "")
+            messages = build_grader_messages(
+                question_prompt=state.question["prompt_md"],
+                rubric=state.question["rubric_md"],
+                student_text=student_text,
+                prior_turns=state.prior_turns,
+            )
+            raw = router.invoke(
+                "grader",
+                messages,
+                response_schema=GradeVerdict,
+                attempt_id=state.attempt["id"],
+            )
+        elif qtype == "image":
+            messages = build_grader_messages_from_vision(
+                question_prompt=state.question["prompt_md"],
+                rubric=state.question["rubric_md"],
+                vision_description=state.vision_description or "",
+                prior_turns=state.prior_turns,
+            )
+            raw = router.invoke(
+                "grader",
+                messages,
+                response_schema=GradeVerdict,
+                attempt_id=state.attempt["id"],
+            )
+        elif qtype == "python":
+            artifact_path = state.submission_payload.get("artifact_path")
+            student_source = state.submission_payload.get("text") or ""
+            if not student_source and artifact_path:
+                from pathlib import Path
+                student_source = Path(artifact_path).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            messages = build_code_judge_messages(
+                question_prompt=state.question["prompt_md"],
+                rubric=state.question["rubric_md"],
+                student_source=student_source,
+                prior_turns=state.prior_turns,
+            )
+            raw = router.invoke(
+                "code_judge",
+                messages,
+                response_schema=GradeVerdict,
+                attempt_id=state.attempt["id"],
+            )
+        elif qtype == "excel":
+            artifact_path = state.submission_payload.get("artifact_path")
+            if not artifact_path:
+                raise ValueError("excel submission missing artifact_path")
+            messages = build_excel_grader_messages(
+                question_prompt=state.question["prompt_md"],
+                rubric=state.question["rubric_md"],
+                prior_turns=state.prior_turns,
+            )
+            raw = router.invoke(
+                "excel_grader",
+                messages,
+                response_schema=GradeVerdict,
+                files=[artifact_path],
+                attempt_id=state.attempt["id"],
+            )
+        else:
+            raise ValueError(f"unsupported qtype: {qtype!r}")
         verdict = _coerce_verdict(raw)
         return {"verdict": verdict}
 
     def tutor(state: GraderState) -> dict[str, Any]:
         if state.verdict is None or state.verdict.verdict == "correct":
             return {"tutor_reply": None}
-        student_text = state.submission_payload.get("text", "")
+        qtype = state.question.get("qtype", "text")
+        if qtype == "image":
+            student_text = (
+                "(student uploaded an image — vision summary below)\n"
+                f"{state.vision_description or '(no description available)'}"
+            )
+        elif qtype == "python":
+            student_text = state.submission_payload.get("text") or (
+                "(student uploaded a Python source file)"
+            )
+        elif qtype == "excel":
+            student_text = "(student uploaded an Excel workbook)"
+        else:
+            student_text = state.submission_payload.get("text", "")
         messages = _build_tutor_messages(
             question_prompt=state.question["prompt_md"],
             rubric=state.question["rubric_md"],

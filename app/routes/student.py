@@ -20,6 +20,7 @@ from app.llm.grader import GraderState, build_grader_graph
 from app.llm.router import LLMRouter
 from app.picker import pick_next_question
 from app.templating import templates
+from app.uploads import UploadError, validate_and_store
 
 router = APIRouter()
 
@@ -186,15 +187,36 @@ async def submit_attempt(
 
     if attempt["status"] != "in_progress":
         raise HTTPException(status_code=409, detail="attempt is closed")
-    if question["qtype"] != "text":
+    qtype = question["qtype"]
+    if qtype not in {"text", "image", "python", "excel"}:
         raise HTTPException(
-            status_code=501, detail=f"qtype {question['qtype']!r} not yet supported"
+            status_code=501, detail=f"qtype {qtype!r} not yet supported"
         )
 
     form = await request.form()
-    student_text = (form.get("student_text") or "").strip()
-    if not student_text:
-        raise HTTPException(status_code=400, detail="empty submission")
+    submission_payload: dict = {}
+
+    if qtype == "text":
+        student_text = (form.get("student_text") or "").strip()
+        if not student_text:
+            raise HTTPException(status_code=400, detail="empty submission")
+        submission_payload = {"kind": "text", "text": student_text}
+    else:
+        upload = form.get("submission_file")
+        if upload is None or not hasattr(upload, "read"):
+            raise HTTPException(status_code=400, detail="missing uploaded file")
+        data = await upload.read()
+        try:
+            stored = validate_and_store(
+                qtype, getattr(upload, "filename", None), data
+            )
+        except UploadError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        submission_payload = {
+            "kind": qtype,
+            "artifact_path": str(stored.path),
+            "text": stored.text,
+        }
 
     prior = _load_submissions(engine, attempt_id)
     turn_index = len(prior) + 1
@@ -202,7 +224,7 @@ async def submit_attempt(
     state = GraderState(
         attempt=attempt,
         question=question,
-        submission_payload={"kind": "text", "text": student_text},
+        submission_payload=submission_payload,
         turn_index=turn_index,
     )
     run = build_grader_graph(get_router(), engine, user_id=user.id)

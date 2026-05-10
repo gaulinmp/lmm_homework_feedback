@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import mimetypes
 import os
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 from langchain_core.messages import AIMessage, BaseMessage
+
+
+_EXCEL_SKILL_BETA = "skills-2025-10-02"
+_FILES_API_BETA = "files-api-2025-04-14"
 
 
 def _split_system(messages) -> tuple[str | None, list[dict[str, Any]]]:
@@ -69,6 +75,29 @@ class AnthropicProvider:
             self._aclient = anthropic.AsyncAnthropic(**kwargs)
         return self._aclient
 
+    def _upload_files(self, client: Any, paths: list[str | Path]) -> list[dict[str, Any]]:
+        """Upload each file via the Files API and return container_upload blocks."""
+        blocks: list[dict[str, Any]] = []
+        for p in paths:
+            path = Path(p)
+            mime, _ = mimetypes.guess_type(str(path))
+            if mime is None:
+                if path.suffix.lower() == ".xlsx":
+                    mime = (
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    )
+                else:
+                    mime = "application/octet-stream"
+            with path.open("rb") as fh:
+                upload = client.beta.files.upload(
+                    file=(path.name, fh, mime),
+                    extra_headers={"anthropic-beta": _FILES_API_BETA},
+                )
+            file_id = getattr(upload, "id", None) or upload["id"]  # tolerate dict
+            blocks.append({"type": "container_upload", "file_id": file_id})
+        return blocks
+
     def invoke(
         self,
         messages,
@@ -76,10 +105,34 @@ class AnthropicProvider:
         response_schema=None,
         files=None,
     ) -> AIMessage:
-        # `files=` is a stub for the phase 5 Excel skill; not used yet.
-        del files
         client = self._ensure_client()
         system, user_msgs = _split_system(messages)
+
+        beta_headers: list[str] = []
+        if files:
+            file_blocks = self._upload_files(client, list(files))
+            beta_headers.append(_FILES_API_BETA)
+            beta_headers.append(_EXCEL_SKILL_BETA)
+            # Attach the uploaded files to the last user message so the model
+            # treats them as part of the current turn.
+            target = None
+            for m in reversed(user_msgs):
+                if m.get("role") == "user":
+                    target = m
+                    break
+            if target is None:
+                target = {"role": "user", "content": []}
+                user_msgs.append(target)
+            existing = target.get("content")
+            if isinstance(existing, str):
+                blocks: list[dict[str, Any]] = [{"type": "text", "text": existing}]
+            elif isinstance(existing, list):
+                blocks = list(existing)
+            else:
+                blocks = []
+            blocks.extend(file_blocks)
+            target["content"] = blocks
+
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -87,6 +140,8 @@ class AnthropicProvider:
         }
         if system is not None:
             kwargs["system"] = system
+        if beta_headers:
+            kwargs["extra_headers"] = {"anthropic-beta": ",".join(beta_headers)}
 
         if response_schema is not None:
             schema = (
