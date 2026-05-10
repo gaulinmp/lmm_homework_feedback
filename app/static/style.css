@@ -130,3 +130,123 @@ main {
 .assignment-button:hover {
   border-color: var(--accent);
 }
+
+.attempt-header {
+  margin-bottom: 1rem;
+}
+
+.attempt-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.prompt {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  white-space: pre-wrap;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.turn {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  background: white;
+}
+
+.turn-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.turn-verdict {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.turn-correct { border-left-color: #1f7a1f; }
+.turn-partial { border-left-color: #b58900; }
+.turn-incorrect { border-left-color: var(--error); }
+.turn-error { border-left-color: var(--error); }
+
+.verdict-correct { color: #1f7a1f; }
+.verdict-partial { color: #b58900; }
+.verdict-incorrect { color: var(--error); }
+.verdict-error { color: var(--error); }
+
+.turn h4 {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.turn-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  margin: 0;
+}
+
+.turn-rationale,
+.turn-reply {
+  margin: 0.25rem 0;
+  white-space: pre-wrap;
+}
+
+.submit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.submit-form textarea {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  resize: vertical;
+}
+
+.submit-form button {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.attempt-meta-inline {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.status-passed,
+.status-exhausted,
+.status-other {
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: white;
+}
+
+.status-passed { border-left: 4px solid #1f7a1f; }
+.status-exhausted { border-left: 4px solid var(--error); }

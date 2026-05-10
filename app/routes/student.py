@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, Response
+import json
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from app.auth import (
     SESSION_COOKIE_NAME,
@@ -11,9 +16,92 @@ from app.auth import (
     require_login,
 )
 from app.db import get_engine
+from app.llm.grader import GraderState, build_grader_graph
+from app.llm.router import LLMRouter
+from app.picker import pick_next_question
 from app.templating import templates
 
 router = APIRouter()
+
+
+_router_singleton: Optional[LLMRouter] = None
+
+
+def get_router() -> LLMRouter:
+    """Lazy LLMRouter accessor — tests monkeypatch this for a fake router."""
+    global _router_singleton
+    if _router_singleton is None:
+        _router_singleton = LLMRouter()
+    return _router_singleton
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _row_to_dict(row) -> dict:
+    return {k: getattr(row, k) for k in row._fields}
+
+
+def _load_attempt_for_user(
+    engine: Engine, attempt_id: int, user_id: int
+) -> tuple[dict, dict]:
+    """Return (attempt_dict, question_dict). Raises 404 if missing/foreign."""
+    with engine.connect() as conn:
+        attempt = conn.execute(
+            text(
+                "SELECT id, user_id, question_id, started_at, completed_at, "
+                "       status, final_score, proof_token_id "
+                "FROM attempts WHERE id = :id"
+            ),
+            {"id": attempt_id},
+        ).fetchone()
+        if attempt is None or attempt.user_id != user_id:
+            raise HTTPException(status_code=404, detail="attempt not found")
+        question = conn.execute(
+            text(
+                "SELECT id, assignment_id, category_id, qid, qtype, "
+                "       prompt_md, rubric_md, max_attempts "
+                "FROM questions WHERE id = :id"
+            ),
+            {"id": attempt.question_id},
+        ).fetchone()
+    return _row_to_dict(attempt), _row_to_dict(question)
+
+
+def _load_submissions(engine: Engine, attempt_id: int) -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT id, turn_index, submitted_at, payload_kind, "
+                "       payload_text, grader_verdict, grader_score, "
+                "       grader_rationale, tutor_reply_md "
+                "FROM submissions "
+                "WHERE attempt_id = :a "
+                "ORDER BY turn_index ASC"
+            ),
+            {"a": attempt_id},
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def _attempt_context(
+    engine: Engine,
+    attempt: dict,
+    question: dict,
+    submissions: list[dict],
+    csrf_token: str,
+) -> dict:
+    max_attempts = int(question.get("max_attempts") or 6)
+    used = len(submissions)
+    return {
+        "attempt": attempt,
+        "question": question,
+        "submissions": submissions,
+        "max_attempts": max_attempts,
+        "attempts_remaining": max(max_attempts - used, 0),
+        "csrf_token": csrf_token,
+    }
 
 
 @router.get("/")
@@ -45,6 +133,111 @@ def picker(request: Request, user: User = Depends(require_login)) -> Response:
 def start_assignment(
     slug: str, user: User = Depends(require_login)
 ) -> Response:
-    return HTMLResponse(
-        f"<p>not yet implemented — slug={slug}</p>", status_code=501
+    engine = get_engine()
+    with engine.connect() as conn:
+        a = conn.execute(
+            text("SELECT id FROM assignments WHERE slug = :s"),
+            {"s": slug},
+        ).fetchone()
+    if a is None:
+        raise HTTPException(status_code=404, detail="assignment not found")
+
+    try:
+        question = pick_next_question(engine, user.id, a.id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    now = _now_iso()
+    with engine.begin() as conn:
+        attempt_id = conn.execute(
+            text(
+                "INSERT INTO attempts "
+                "(user_id, question_id, started_at, status) "
+                "VALUES (:u, :q, :s, 'in_progress')"
+            ),
+            {"u": user.id, "q": question.id, "s": now},
+        ).lastrowid
+    return RedirectResponse(f"/attempts/{attempt_id}", status_code=303)
+
+
+@router.get("/attempts/{attempt_id}")
+def view_attempt(
+    attempt_id: int,
+    request: Request,
+    user: User = Depends(require_login),
+) -> Response:
+    engine = get_engine()
+    attempt, question = _load_attempt_for_user(engine, attempt_id, user.id)
+    submissions = _load_submissions(engine, attempt_id)
+    sid = request.cookies.get(SESSION_COOKIE_NAME, "")
+    ctx = _attempt_context(engine, attempt, question, submissions, csrf_token_for(sid))
+    ctx["user"] = user
+    return templates.TemplateResponse(request, "attempt.html", ctx)
+
+
+@router.post("/attempts/{attempt_id}/submit")
+async def submit_attempt(
+    attempt_id: int,
+    request: Request,
+    user: User = Depends(require_login),
+) -> Response:
+    engine = get_engine()
+    attempt, question = _load_attempt_for_user(engine, attempt_id, user.id)
+
+    if attempt["status"] != "in_progress":
+        raise HTTPException(status_code=409, detail="attempt is closed")
+    if question["qtype"] != "text":
+        raise HTTPException(
+            status_code=501, detail=f"qtype {question['qtype']!r} not yet supported"
+        )
+
+    form = await request.form()
+    student_text = (form.get("student_text") or "").strip()
+    if not student_text:
+        raise HTTPException(status_code=400, detail="empty submission")
+
+    prior = _load_submissions(engine, attempt_id)
+    turn_index = len(prior) + 1
+
+    state = GraderState(
+        attempt=attempt,
+        question=question,
+        submission_payload={"kind": "text", "text": student_text},
+        turn_index=turn_index,
     )
+    run = build_grader_graph(get_router(), engine, user_id=user.id)
+    final = run(state)
+
+    with engine.connect() as conn:
+        new_row = conn.execute(
+            text(
+                "SELECT id, turn_index, submitted_at, payload_kind, "
+                "       payload_text, grader_verdict, grader_score, "
+                "       grader_rationale, tutor_reply_md "
+                "FROM submissions WHERE id = :id"
+            ),
+            {"id": final.submission_id},
+        ).fetchone()
+        attempt_after = conn.execute(
+            text(
+                "SELECT id, user_id, question_id, started_at, completed_at, "
+                "       status, final_score, proof_token_id "
+                "FROM attempts WHERE id = :id"
+            ),
+            {"id": attempt_id},
+        ).fetchone()
+    new_submission = _row_to_dict(new_row) if new_row else None
+    attempt_after_dict = _row_to_dict(attempt_after)
+
+    sid = request.cookies.get(SESSION_COOKIE_NAME, "")
+    submissions_all = prior + ([new_submission] if new_submission else [])
+    ctx = _attempt_context(
+        engine, attempt_after_dict, question, submissions_all, csrf_token_for(sid)
+    )
+    ctx["user"] = user
+    ctx["new_turn"] = new_submission
+
+    return templates.TemplateResponse(request, "_turn.html", ctx)
+
+
+__all__ = ["router", "get_router"]

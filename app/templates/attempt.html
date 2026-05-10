@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Attempt {{ attempt.id }} — Homework Tutor{% endblock %}
+{% block content %}
+<section class="attempt">
+  <header class="attempt-header">
+    <h2>Question <code>{{ question.qid }}</code></h2>
+    <p class="attempt-meta">
+      Type: {{ question.qtype }} · Attempt
+      {% if attempt.status == 'in_progress' %}
+        {{ submissions|length + 1 }} of {{ max_attempts }}
+      {% else %}
+        complete · status: <strong>{{ attempt.status }}</strong>
+      {% endif %}
+    </p>
+    <article class="prompt">
+      {{ question.prompt_md }}
+    </article>
+  </header>
+
+  <section id="transcript" class="transcript">
+    {% for s in submissions %}
+      {% include "_turn_row.html" %}
+    {% endfor %}
+  </section>
+
+  <section id="attempt-form">
+    {% if attempt.status == 'in_progress' %}
+    <form
+      method="post"
+      action="/attempts/{{ attempt.id }}/submit"
+      hx-post="/attempts/{{ attempt.id }}/submit"
+      hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
+      hx-target="#attempt-form"
+      hx-swap="outerHTML"
+      class="submit-form"
+    >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="student_text">Your answer</label>
+      <textarea id="student_text" name="student_text" rows="6" required></textarea>
+      <button type="submit">Submit</button>
+    </form>
+    {% elif attempt.status == 'passed' %}
+    <p class="status-passed">
+      Correct — attempt closed. <a href="/">Pick another assignment.</a>
+    </p>
+    {% elif attempt.status == 'exhausted' %}
+    <p class="status-exhausted">
+      No attempts remaining for this question.
+      <a href="/">Pick another assignment.</a>
+    </p>
+    {% else %}
+    <p class="status-other">Status: {{ attempt.status }}.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

@@ -8,6 +8,7 @@ categories:
   - name: scatter
   - name: boxplot
   - name: lineplot
+  - name: interpretation
 ---
 
 ## Question q1
@@ -160,3 +161,27 @@ Suppose your audience is the audit committee, and they want to know whether
 operating-margin trends across industries diverged during 2018–2021. Would you
 present them the lineplot from q7 or the boxplots from q5/q6? In 3–6 sentences,
 defend your choice and name one thing the rejected chart would obscure.
+
+## Question q9
+
+```yaml
+qid: q9
+category: interpretation
+type: text
+max_attempts: 6
+rubric: |
+  - Names a specific reason a histogram is preferred over a single summary
+    statistic (mean / median) for income or asset data
+  - References at least one feature of the distribution (skew, outliers,
+    multimodality, or tail behavior) that a single statistic would hide
+  - Distinguishes "what shape looks like" from "what shape implies" in plain
+    accounting terms (e.g. that a long right tail in revenue suggests a few
+    very large firms dominate the sample)
+  - 2–4 sentences, no jargon dump
+```
+
+In 2–4 sentences, explain why a histogram of firm-level annual `net_income`
+is more informative than reporting only the mean and median. Reference at
+least one feature of the distribution that a single summary statistic would
+hide, and connect that feature back to what it tells the reader about the
+underlying firms.
