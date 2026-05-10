@@ -9,6 +9,8 @@ categories:
   - name: boxplot
   - name: lineplot
   - name: interpretation
+  - name: code
+  - name: workbook
 ---
 
 ## Question q1
@@ -185,3 +187,51 @@ is more informative than reporting only the mean and median. Reference at
 least one feature of the distribution that a single summary statistic would
 hide, and connect that feature back to what it tells the reader about the
 underlying firms.
+
+## Question q10
+
+```yaml
+qid: q10
+category: code
+type: python
+max_attempts: 6
+rubric: |
+  - Reads `data/sp500_fundamentals.csv` via pandas (or polars) and selects
+    the most recent `fiscal_year`
+  - Computes a histogram of `net_income` using matplotlib or seaborn
+  - Sets explicit axis labels with units and a title or caption identifying
+    the variable and year
+  - Chooses a bin count (or rule, e.g. Freedman–Diaconis) that is justified
+    in a comment rather than left at the matplotlib default
+  - Saves the figure to disk (e.g. via `plt.savefig`) or shows it explicitly
+```
+
+Write a self-contained Python script that loads the S&P 500 firm-year panel
+from `data/sp500_fundamentals.csv`, filters to the most recent fiscal year,
+and produces a labeled histogram of `net_income`. Pick a bin strategy
+deliberately (not the matplotlib default) and leave a one-line comment
+justifying it. Upload your `.py` file.
+
+## Question q11
+
+```yaml
+qid: q11
+category: workbook
+type: excel
+max_attempts: 6
+rubric: |
+  - A `Summary` sheet (or equivalent) lists each industry with a computed
+    mean and median of `return_on_assets` for the most recent fiscal year
+  - The mean and median cells use formulas (`AVERAGEIF`, `MEDIAN` with an
+    array, or a pivot) — not hard-coded numbers
+  - A chart object on the same workbook visualizes those industry means or
+    medians (bar / column chart is fine)
+  - Axis labels and a chart title identify the metric and units
+  - The raw firm-year rows are present on a separate sheet, not deleted
+```
+
+Build an `.xlsx` workbook from `data/sp500_fundamentals.csv` that summarizes
+mean and median `return_on_assets` by `industry` for the most recent fiscal
+year. Use Excel formulas (not Python or hard-coded numbers) to compute the
+aggregates, and add a labeled bar or column chart for the industry means.
+Upload the `.xlsx` file.

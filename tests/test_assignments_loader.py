@@ -173,5 +173,5 @@ def test_repo_assignment_loads(engine: Engine):
     with engine.connect() as conn:
         n_cats = conn.execute(text("SELECT COUNT(*) FROM categories")).scalar()
         n_qs = conn.execute(text("SELECT COUNT(*) FROM questions")).scalar()
-    assert n_cats == 5
-    assert n_qs == 9
+    assert n_cats == 7
+    assert n_qs == 11

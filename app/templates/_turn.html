@@ -20,11 +20,33 @@ turn to #transcript via an out-of-band swap.
     hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
     hx-target="#attempt-form"
     hx-swap="outerHTML"
+    hx-encoding="multipart/form-data"
+    enctype="multipart/form-data"
     class="submit-form"
   >
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label for="student_text">Your answer</label>
-    <textarea id="student_text" name="student_text" rows="6" required></textarea>
+    {% if question.qtype == 'text' %}
+      <label for="student_text">Your answer</label>
+      <textarea id="student_text" name="student_text" rows="6" required></textarea>
+    {% else %}
+      <label for="submission_file">
+        Upload your
+        {% if question.qtype == 'image' %}chart (PNG or JPEG)
+        {% elif question.qtype == 'python' %}Python source (.py)
+        {% elif question.qtype == 'excel' %}Excel workbook (.xlsx)
+        {% endif %}
+      </label>
+      <input
+        type="file"
+        id="submission_file"
+        name="submission_file"
+        required
+        {% if question.qtype == 'image' %}accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+        {% elif question.qtype == 'python' %}accept=".py,text/x-python,text/plain"
+        {% elif question.qtype == 'excel' %}accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        {% endif %}
+      >
+    {% endif %}
     <button type="submit">Submit</button>
     <p class="attempt-meta-inline">
       Attempt {{ submissions|length + 1 }} of {{ max_attempts }}
