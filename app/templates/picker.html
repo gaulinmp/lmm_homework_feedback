@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Assignments — Homework Tutor{% endblock %}
+{% block content %}
+<section class="picker">
+  <h2>Pick an assignment</h2>
+  {% if assignments %}
+  <ul class="assignment-list">
+    {% for a in assignments %}
+    <li class="assignment-row">
+      <form method="post" action="/assignments/{{ a.slug }}/start" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="assignment-button">
+          {% if a.week is not none %}Week {{ a.week }} — {% endif %}{{ a.title }}
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No assignments are loaded yet. Run <code>make load</code>.</p>
+  {% endif %}
+</section>
+{% endblock %}
