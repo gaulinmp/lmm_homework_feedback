@@ -1,0 +1,45 @@
+{# HTMX response after POST /attempts/{id}/submit.
+
+The form's hx-target is #attempt-form with hx-swap="outerHTML". This template
+returns the *new* form-area block (or a closing message) AND appends the new
+turn to #transcript via an out-of-band swap.
+#}
+{% if new_turn %}
+<div hx-swap-oob="beforeend:#transcript">
+  {% set s = new_turn %}
+  {% include "_turn_row.html" %}
+</div>
+{% endif %}
+
+<section id="attempt-form">
+  {% if attempt.status == 'in_progress' %}
+  <form
+    method="post"
+    action="/attempts/{{ attempt.id }}/submit"
+    hx-post="/attempts/{{ attempt.id }}/submit"
+    hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
+    hx-target="#attempt-form"
+    hx-swap="outerHTML"
+    class="submit-form"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="student_text">Your answer</label>
+    <textarea id="student_text" name="student_text" rows="6" required></textarea>
+    <button type="submit">Submit</button>
+    <p class="attempt-meta-inline">
+      Attempt {{ submissions|length + 1 }} of {{ max_attempts }}
+    </p>
+  </form>
+  {% elif attempt.status == 'passed' %}
+  <p class="status-passed">
+    Correct — attempt closed. <a href="/">Pick another assignment.</a>
+  </p>
+  {% elif attempt.status == 'exhausted' %}
+  <p class="status-exhausted">
+    No attempts remaining for this question.
+    <a href="/">Pick another assignment.</a>
+  </p>
+  {% else %}
+  <p class="status-other">Status: {{ attempt.status }}.</p>
+  {% endif %}
+</section>
