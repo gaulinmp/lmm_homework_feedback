@@ -31,6 +31,7 @@ from app.graders.text import PriorTurn, build_grader_messages
 from app.llm.prompts import TUTOR_SYSTEM_PROMPT
 from app.llm.router import LLMRouter
 from app.llm.verdicts import GradeVerdict
+from app.proof import mint as mint_proof_token
 
 
 class GraderState(BaseModel):
@@ -200,7 +201,7 @@ def _persist(
             conn.execute(
                 text(
                     "UPDATE attempts SET status='passed', completed_at=:c, "
-                    "final_score=:s, proof_token_id=NULL "
+                    "final_score=:s "
                     "WHERE id=:id"
                 ),
                 {"c": now, "s": verdict.score, "id": attempt_id},
@@ -229,6 +230,9 @@ def _persist(
                 ),
                 {"c": now, "s": verdict.score, "id": attempt_id},
             )
+
+    if next_status == "passed":
+        mint_proof_token(attempt_id, engine=engine)
 
     return sub_id, next_status
 

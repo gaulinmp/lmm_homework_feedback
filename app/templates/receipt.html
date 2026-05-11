@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Proof receipt — {{ payload.assignment_slug }}/{{ payload.qid }}{% endblock %}
+{% block content %}
+<section class="receipt">
+  <header class="receipt-header">
+    <h2>Proof of completion</h2>
+    <p class="receipt-meta">
+      Assignment <code>{{ payload.assignment_slug }}</code> · question
+      <code>{{ payload.qid }}</code> · category {{ payload.category }}
+    </p>
+    <p class="receipt-meta">
+      Completed at <time>{{ payload.completed_at }}</time>
+      after {{ payload.submission_count }} submission(s)
+      · score {{ '%.2f' % payload.final_score }}
+    </p>
+  </header>
+
+  <section class="receipt-token">
+    <h3>Token</h3>
+    <p class="hint">
+      Paste this token into Canvas to record credit for this question.
+    </p>
+    <textarea id="proof-token" readonly rows="4" class="token-blob">{{ token }}</textarea>
+    <div class="receipt-actions">
+      <button type="button" id="copy-token-btn">Copy to clipboard</button>
+      <button type="button" id="print-btn">Print receipt</button>
+    </div>
+  </section>
+
+  <section class="receipt-payload">
+    <h3>Payload</h3>
+    <pre class="payload-json">{{ payload_pretty }}</pre>
+  </section>
+
+  <p class="receipt-back">
+    <a href="/">Back to assignments</a>
+  </p>
+</section>
+
+<script>
+  document.getElementById('copy-token-btn').addEventListener('click', () => {
+    const ta = document.getElementById('proof-token');
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value);
+    } else {
+      document.execCommand('copy');
+    }
+  });
+  document.getElementById('print-btn').addEventListener('click', () => {
+    window.print();
+  });
+</script>
+{% endblock %}

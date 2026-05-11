@@ -13,8 +13,8 @@ help:
 	@echo "  backup     Backup data/tutor.db into BACKUP_DIR (default: ~/Dropbox/backups/llm_homework_tutor)"
 	@echo "  load       Load assignments/*.md into the database"
 	@echo "  user       Add a user: 'make user USER=foo [ROLE=admin]'"
-	@echo "  verify     (phase 6 stub)"
-	@echo "  audit      (phase 7 stub)"
+	@echo "  verify     Verify a proof token: 'make verify TOKEN=...'"
+	@echo "  audit      Dump LLM exchange: 'make audit ID=<attempt_id>' or 'make audit USER=<username>'"
 
 install:
 	uv sync
@@ -47,7 +47,15 @@ user:
 	uv run python cli/manage_users.py add --username $(USER) --role $(ROLE)
 
 verify:
-	@echo "verify: not implemented yet (phase 6)"
+	@if [ -z "$(TOKEN)" ]; then echo "usage: make verify TOKEN=<token>"; exit 1; fi
+	uv run python cli/verify_token.py "$(TOKEN)"
 
 audit:
-	@echo "audit: not implemented yet (phase 7)"
+	@if [ -z "$(ID)" ] && [ -z "$(USER)" ]; then \
+	  echo "usage: make audit ID=<attempt_id> | USER=<username>"; exit 1; \
+	fi
+	@if [ -n "$(ID)" ]; then \
+	  uv run python cli/audit.py --attempt $(ID); \
+	else \
+	  uv run python cli/audit.py --user $(USER); \
+	fi
