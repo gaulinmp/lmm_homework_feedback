@@ -1,4 +1,10 @@
-{# Renders one transcript row for a single submission. Caller passes `s`. #}
+{# Renders one transcript row for a single submission. Caller passes `s`.
+
+If `s.tutor_reply_md` is set and this is the *newest* turn (passed in as
+`stream_turn`), the tutor reply slot is rendered as an SSE-streamed
+placeholder so the student sees the text type itself in. Otherwise the
+reply is rendered statically.
+#}
 <article class="turn turn-{{ s.grader_verdict }}" data-turn="{{ s.turn_index }}">
   <header class="turn-header">
     <span class="turn-index">Attempt {{ s.turn_index }}</span>
@@ -17,7 +23,18 @@
   {% if s.tutor_reply_md %}
   <section class="turn-tutor">
     <h4>Tutor</h4>
+    {% if stream_turn and stream_turn.id == s.id %}
+    <div
+      class="turn-reply turn-reply-streaming"
+      hx-ext="sse"
+      sse-connect="/attempts/{{ attempt.id }}/stream?submission={{ s.id }}"
+      sse-swap="tutor-chunk"
+      sse-close="tutor-done"
+      hx-swap="beforeend"
+    ></div>
+    {% else %}
     <div class="turn-reply">{{ s.tutor_reply_md }}</div>
+    {% endif %}
   </section>
   {% endif %}
 </article>

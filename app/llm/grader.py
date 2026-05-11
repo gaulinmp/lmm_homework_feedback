@@ -13,6 +13,8 @@ qtypes so phase 5 only adds work to that one node.
 from __future__ import annotations
 
 import json
+import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -32,6 +34,75 @@ from app.llm.prompts import TUTOR_SYSTEM_PROMPT
 from app.llm.router import LLMRouter
 from app.llm.verdicts import GradeVerdict
 from app.proof import mint as mint_proof_token
+
+
+logger = logging.getLogger(__name__)
+
+
+_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z_0-9]{2,}|\d+(?:\.\d+)?")
+
+# Common English / domain words that aren't meaningful leaks even when they
+# appear in the reference solution. Tutor replies routinely use these.
+_LEAK_STOPWORDS: frozenset[str] = frozenset({
+    "the", "and", "for", "with", "from", "this", "that", "have", "has",
+    "are", "you", "your", "they", "their", "them", "but", "not", "any",
+    "can", "will", "would", "should", "could", "may", "might", "must",
+    "use", "uses", "used", "using", "one", "two", "three", "four",
+    "five", "six", "seven", "eight", "nine", "ten", "zero",
+    "data", "value", "values", "column", "row", "rows", "table",
+    "chart", "plot", "graph", "answer", "question", "rubric",
+    "student", "tutor", "grader", "reference", "solution",
+    "true", "false", "none", "null", "first", "second", "third",
+    "into", "than", "then", "when", "what", "which", "where", "why",
+    "how", "all", "some", "more", "most", "less", "very", "just",
+    "also", "only", "even", "such", "each", "both", "many", "much",
+    "every", "while", "because", "since", "though", "although",
+    "between", "across", "above", "below", "after", "before",
+    "consider", "approach", "think", "make", "see", "show", "tell",
+})
+
+
+_CANNED_TUTOR_REPLY = (
+    "Let me try a different approach — what part of the rubric do you find "
+    "most confusing?"
+)
+
+
+def extract_reference_tokens(reference_md: str | None) -> set[str]:
+    """Pull out numeric and identifier-shaped tokens from the reference.
+
+    Tokens are normalised to lowercase. Short tokens, plain English
+    function words, and tokens with < 3 chars are dropped because they
+    generate too much noise. Numbers are always kept (they're the highest
+    signal indicator of a leaked reference value).
+    """
+    if not reference_md:
+        return set()
+    out: set[str] = set()
+    for raw in _TOKEN_RE.findall(reference_md):
+        tok = raw.lower()
+        if tok[0].isdigit():
+            # numeric — keep even short ones, they're high-signal
+            out.add(tok)
+            continue
+        if len(tok) < 3:
+            continue
+        if tok in _LEAK_STOPWORDS:
+            continue
+        out.add(tok)
+    return out
+
+
+def find_leaked_tokens(reply: str | None, reference_tokens: set[str]) -> set[str]:
+    """Return reference tokens that appear verbatim (whole-word) in the reply."""
+    if not reply or not reference_tokens:
+        return set()
+    reply_lower = reply.lower()
+    leaks: set[str] = set()
+    for tok in reference_tokens:
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(tok)}(?![A-Za-z0-9_])", reply_lower):
+            leaks.add(tok)
+    return leaks
 
 
 class GraderState(BaseModel):
@@ -146,14 +217,48 @@ def _coerce_verdict(raw: Any) -> GradeVerdict:
     return GradeVerdict.model_validate(data)
 
 
+# Module-level cancellation registry for the grading loop.
+#
+# When the submit endpoint times out waiting on the graph, the underlying
+# thread keeps running (Python threads cannot be cancelled mid-call). The
+# endpoint records ``(attempt_id, turn_index)`` here so the eventual
+# ``_persist`` call sees the cancellation flag and skips writing — keeping
+# the "do not consume an attempt" contract from §13 of the design doc.
+_CANCELLED_TURNS: set[tuple[int, int]] = set()
+
+
+def mark_turn_cancelled(attempt_id: int, turn_index: int) -> None:
+    _CANCELLED_TURNS.add((attempt_id, turn_index))
+
+
+def is_turn_cancelled(attempt_id: int, turn_index: int) -> bool:
+    return (attempt_id, turn_index) in _CANCELLED_TURNS
+
+
+def clear_turn_cancellation(attempt_id: int, turn_index: int) -> None:
+    _CANCELLED_TURNS.discard((attempt_id, turn_index))
+
+
 def _persist(
     engine: Engine,
     state: GraderState,
     *,
     user_id: int,
-) -> tuple[int, str]:
-    """Write the submission row, update attempt status, return (submission_id, status_after)."""
+) -> tuple[int | None, str]:
+    """Write the submission row, update attempt status, return (submission_id, status_after).
+
+    If the submit endpoint has marked this turn cancelled (timeout), skip the
+    write entirely and return (None, "cancelled").
+    """
     attempt_id = state.attempt["id"]
+    if is_turn_cancelled(attempt_id, state.turn_index):
+        logger.info(
+            "skipping persist for cancelled turn attempt=%s turn=%s",
+            attempt_id,
+            state.turn_index,
+        )
+        clear_turn_cancellation(attempt_id, state.turn_index)
+        return None, "cancelled"
     question = state.question
     verdict = state.verdict
     if verdict is None:
@@ -373,8 +478,52 @@ def build_grader_graph(
             messages,
             attempt_id=state.attempt["id"],
         )
-        reply_text = getattr(raw, "content", str(raw))
-        return {"tutor_reply": reply_text or ""}
+        reply_text = getattr(raw, "content", str(raw)) or ""
+
+        reference_tokens = extract_reference_tokens(
+            state.question.get("reference_solution_md")
+        )
+        leaks = find_leaked_tokens(reply_text, reference_tokens)
+        if leaks:
+            logger.warning(
+                "tutor leak detected for attempt %s turn %s: %s",
+                state.attempt.get("id"),
+                state.turn_index,
+                sorted(leaks),
+            )
+            stricter = list(messages)
+            stricter.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous reply leaked these tokens from the "
+                        "reference solution: "
+                        + ", ".join(sorted(leaks))
+                        + ". Regenerate your reply WITHOUT mentioning any of "
+                        "those tokens, numbers, variable names, or function "
+                        "names. Stay Socratic and within the system prompt's "
+                        "constraints."
+                    ),
+                }
+            )
+            retry = router.invoke(
+                "tutor",
+                stricter,
+                attempt_id=state.attempt["id"],
+            )
+            retry_text = getattr(retry, "content", str(retry)) or ""
+            retry_leaks = find_leaked_tokens(retry_text, reference_tokens)
+            if retry_leaks:
+                logger.error(
+                    "tutor leak persisted after regeneration for attempt %s "
+                    "turn %s: %s — using canned fallback",
+                    state.attempt.get("id"),
+                    state.turn_index,
+                    sorted(retry_leaks),
+                )
+                return {"tutor_reply": _CANNED_TUTOR_REPLY}
+            return {"tutor_reply": retry_text}
+        return {"tutor_reply": reply_text}
 
     def persist(state: GraderState) -> dict[str, Any]:
         sub_id, status_after = _persist(engine, state, user_id=user_id)
@@ -414,4 +563,12 @@ def build_grader_graph(
     return run
 
 
-__all__ = ["GraderState", "build_grader_graph"]
+__all__ = [
+    "GraderState",
+    "build_grader_graph",
+    "extract_reference_tokens",
+    "find_leaked_tokens",
+    "mark_turn_cancelled",
+    "is_turn_cancelled",
+    "clear_turn_cancellation",
+]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import importlib
 import json
 import time
@@ -21,6 +23,42 @@ PROVIDER_CLASSES: dict[str, str] = {
     "anthropic": "app.llm.providers.anthropic:AnthropicProvider",
     "gemini": "app.llm.providers.gemini:GeminiProvider",
 }
+
+
+# Per-role default worker counts. Local llama.cpp roles serve one request at a
+# time so we throttle to 1. Cloud roles are effectively unbounded.
+_LOCAL_BASE_URL_PREFIXES = ("http://127.0.0.1", "http://localhost")
+_UNBOUNDED_WORKERS = 1024
+
+
+class RoleBucket:
+    """Per-role concurrency gate with a visible waiting count.
+
+    Wraps an ``asyncio.Semaphore`` and tracks how many coroutines are blocked
+    waiting for a slot. The waiting count is exposed for the queue-position UI.
+    """
+
+    def __init__(self, workers: int) -> None:
+        self.workers = workers
+        self._sem = asyncio.Semaphore(workers)
+        self.waiting = 0
+        self.in_flight = 0
+
+    @contextlib.asynccontextmanager
+    async def acquire(self):
+        self.waiting += 1
+        try:
+            await self._sem.acquire()
+        except BaseException:
+            self.waiting -= 1
+            raise
+        self.waiting -= 1
+        self.in_flight += 1
+        try:
+            yield
+        finally:
+            self.in_flight -= 1
+            self._sem.release()
 
 
 def _load_provider_class(name: str):
@@ -69,9 +107,55 @@ class LLMRouter:
             config = tomllib.load(f)
         self._roles: dict[str, dict[str, Any]] = config.get("roles", {})
         self._providers: dict[str, Any] = {}
+        self._role_buckets: dict[str, RoleBucket] = {}
+        self._user_locks: dict[int, asyncio.Lock] = {}
 
     def roles(self) -> list[str]:
         return list(self._roles.keys())
+
+    def _default_workers_for(self, role: str) -> int:
+        cfg = self._roles.get(role) or {}
+        if "workers" in cfg:
+            try:
+                return max(1, int(cfg["workers"]))
+            except (TypeError, ValueError):
+                pass
+        base_url = (cfg.get("base_url") or "").lower()
+        if any(base_url.startswith(p) for p in _LOCAL_BASE_URL_PREFIXES):
+            return 1
+        provider = cfg.get("provider")
+        if provider == "openai_compat" and not base_url:
+            return 1
+        return _UNBOUNDED_WORKERS
+
+    def role_bucket(self, role: str) -> RoleBucket:
+        """Return (creating if necessary) the per-role concurrency bucket."""
+        if role not in self._role_buckets:
+            self._role_buckets[role] = RoleBucket(self._default_workers_for(role))
+        return self._role_buckets[role]
+
+    def queue_status(self, role: str) -> dict[str, int]:
+        """Snapshot of how many requests are waiting / running for a role."""
+        bucket = self._role_buckets.get(role)
+        if bucket is None:
+            return {
+                "waiting": 0,
+                "in_flight": 0,
+                "workers": self._default_workers_for(role),
+            }
+        return {
+            "waiting": bucket.waiting,
+            "in_flight": bucket.in_flight,
+            "workers": bucket.workers,
+        }
+
+    def user_lock(self, user_id: int) -> asyncio.Lock:
+        """Per-user asyncio.Lock — created lazily, persists for process lifetime."""
+        lock = self._user_locks.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._user_locks[user_id] = lock
+        return lock
 
     def _provider_for(self, role: str):
         if role not in self._roles:
