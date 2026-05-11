@@ -7,12 +7,24 @@ turn to #transcript via an out-of-band swap.
 {% if new_turn %}
 <div hx-swap-oob="beforeend:#transcript">
   {% set s = new_turn %}
+  {% set stream_turn = new_turn %}
   {% include "_turn_row.html" %}
 </div>
 {% endif %}
 
 <section id="attempt-form">
+  {% if error_message %}
+  <div class="error submission-error" role="alert">
+    {{ error_message }}
+  </div>
+  {% endif %}
   {% if attempt.status == 'in_progress' %}
+  <div
+    id="queue-status"
+    hx-get="/attempts/{{ attempt.id }}/queue-status"
+    hx-trigger="load delay:200ms, every 1s"
+    hx-swap="innerHTML"
+  ></div>
   <form
     method="post"
     action="/attempts/{{ attempt.id }}/submit"

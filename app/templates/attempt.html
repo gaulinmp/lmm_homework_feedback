@@ -25,6 +25,12 @@
 
   <section id="attempt-form">
     {% if attempt.status == 'in_progress' %}
+    <div
+      id="queue-status"
+      hx-get="/attempts/{{ attempt.id }}/queue-status"
+      hx-trigger="load delay:200ms, every 1s"
+      hx-swap="innerHTML"
+    ></div>
     <form
       method="post"
       action="/attempts/{{ attempt.id }}/submit"

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import (
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -16,14 +23,29 @@ from app.auth import (
     require_login,
 )
 from app.db import get_engine
-from app.llm.grader import GraderState, build_grader_graph
+from app.llm.grader import GraderState, build_grader_graph, mark_turn_cancelled
 from app.llm.router import LLMRouter
 from app.picker import pick_next_question
 from app.proof import _b64url_encode, _canonical_json
 from app.templating import templates
 from app.uploads import UploadError, validate_and_store
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+# Per-node timeouts come from §13 of the design doc. The grader graph is run
+# end-to-end in a worker thread; we wrap the whole run with the sum since the
+# nodes execute serially.
+GRADE_TIMEOUT_SECONDS = 60
+TUTOR_TIMEOUT_SECONDS = 120
+TOTAL_TIMEOUT_SECONDS = GRADE_TIMEOUT_SECONDS + TUTOR_TIMEOUT_SECONDS
+
+# SSE playback chunking. We chunk by word with a small inter-chunk delay so
+# the student sees the tutor reply assemble token-by-token rather than as a
+# single blob.
+SSE_CHUNK_DELAY_SECONDS = 0.04
 
 
 _router_singleton: Optional[LLMRouter] = None
@@ -63,7 +85,8 @@ def _load_attempt_for_user(
         question = conn.execute(
             text(
                 "SELECT id, assignment_id, category_id, qid, qtype, "
-                "       prompt_md, rubric_md, max_attempts "
+                "       prompt_md, rubric_md, reference_solution_md, "
+                "       max_attempts "
                 "FROM questions WHERE id = :id"
             ),
             {"id": attempt.question_id},
@@ -177,6 +200,42 @@ def view_attempt(
     return templates.TemplateResponse(request, "attempt.html", ctx)
 
 
+def _render_timeout_error(
+    request: Request,
+    *,
+    attempt: dict,
+    question: dict,
+    submissions: list[dict],
+    csrf_token: str,
+    user: User,
+) -> Response:
+    ctx = _attempt_context(get_engine(), attempt, question, submissions, csrf_token)
+    ctx["user"] = user
+    ctx["error_message"] = (
+        "Grading timed out. Your attempt was not consumed — please try "
+        "submitting again."
+    )
+    return templates.TemplateResponse(request, "_turn.html", ctx)
+
+
+def _render_busy_error(
+    request: Request,
+    *,
+    attempt: dict,
+    question: dict,
+    submissions: list[dict],
+    csrf_token: str,
+    user: User,
+) -> Response:
+    ctx = _attempt_context(get_engine(), attempt, question, submissions, csrf_token)
+    ctx["user"] = user
+    ctx["error_message"] = (
+        "You already have a submission being graded. Please wait for the "
+        "tutor to respond before submitting again."
+    )
+    return templates.TemplateResponse(request, "_turn.html", ctx)
+
+
 @router.post("/attempts/{attempt_id}/submit")
 async def submit_attempt(
     attempt_id: int,
@@ -219,17 +278,66 @@ async def submit_attempt(
             "text": stored.text,
         }
 
-    prior = _load_submissions(engine, attempt_id)
-    turn_index = len(prior) + 1
+    sid = request.cookies.get(SESSION_COOKIE_NAME, "")
+    csrf = csrf_token_for(sid)
 
-    state = GraderState(
-        attempt=attempt,
-        question=question,
-        submission_payload=submission_payload,
-        turn_index=turn_index,
+    llm_router = get_router()
+    user_lock = (
+        llm_router.user_lock(user.id)
+        if hasattr(llm_router, "user_lock")
+        else asyncio.Lock()
     )
-    run = build_grader_graph(get_router(), engine, user_id=user.id)
-    final = run(state)
+    if user_lock.locked():
+        prior = _load_submissions(engine, attempt_id)
+        logger.info(
+            "rejecting double-submit for user %s on attempt %s",
+            user.id,
+            attempt_id,
+        )
+        return _render_busy_error(
+            request,
+            attempt=attempt,
+            question=question,
+            submissions=prior,
+            csrf_token=csrf,
+            user=user,
+        )
+
+    async with user_lock:
+        prior = _load_submissions(engine, attempt_id)
+        turn_index = len(prior) + 1
+
+        state = GraderState(
+            attempt=attempt,
+            question=question,
+            submission_payload=submission_payload,
+            turn_index=turn_index,
+        )
+        run = build_grader_graph(llm_router, engine, user_id=user.id)
+
+        try:
+            final = await asyncio.wait_for(
+                asyncio.to_thread(run, state),
+                timeout=TOTAL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # Threads can't be cancelled; mark this turn so the orphan
+            # grader's eventual persist() short-circuits and writes nothing.
+            mark_turn_cancelled(attempt_id, turn_index)
+            logger.error(
+                "grader timeout on attempt %s for user %s (timeout=%ss)",
+                attempt_id,
+                user.id,
+                TOTAL_TIMEOUT_SECONDS,
+            )
+            return _render_timeout_error(
+                request,
+                attempt=attempt,
+                question=question,
+                submissions=prior,
+                csrf_token=csrf,
+                user=user,
+            )
 
     with engine.connect() as conn:
         new_row = conn.execute(
@@ -252,15 +360,128 @@ async def submit_attempt(
     new_submission = _row_to_dict(new_row) if new_row else None
     attempt_after_dict = _row_to_dict(attempt_after)
 
-    sid = request.cookies.get(SESSION_COOKIE_NAME, "")
     submissions_all = prior + ([new_submission] if new_submission else [])
     ctx = _attempt_context(
-        engine, attempt_after_dict, question, submissions_all, csrf_token_for(sid)
+        engine, attempt_after_dict, question, submissions_all, csrf
     )
     ctx["user"] = user
     ctx["new_turn"] = new_submission
 
     return templates.TemplateResponse(request, "_turn.html", ctx)
+
+
+@router.get("/attempts/{attempt_id}/queue-status")
+def queue_status(
+    attempt_id: int,
+    request: Request,
+    user: User = Depends(require_login),
+) -> Response:
+    """HTMX-polled fragment: 'you are #N in line for the tutor'.
+
+    Renders nothing while no submission is in flight, otherwise a small
+    banner naming the student's queue position behind the tutor role bucket.
+    """
+    engine = get_engine()
+    attempt, _question = _load_attempt_for_user(engine, attempt_id, user.id)
+    llm_router = get_router()
+    user_lock_held = bool(
+        hasattr(llm_router, "user_lock")
+        and llm_router.user_lock(user.id).locked()
+    )
+    qstatus = getattr(llm_router, "queue_status", None)
+    tutor_q = qstatus("tutor") if qstatus else {"waiting": 0, "in_flight": 0, "workers": 1}
+    grader_q = qstatus("grader") if qstatus else {"waiting": 0, "in_flight": 0, "workers": 1}
+
+    in_flight = bool(user_lock_held)
+    waiting_ahead = tutor_q["waiting"] + grader_q["waiting"]
+    position = waiting_ahead + 1 if in_flight else 0
+    return templates.TemplateResponse(
+        request,
+        "_queue_status.html",
+        {
+            "attempt": attempt,
+            "in_flight": in_flight,
+            "position": position,
+            "tutor_queue": tutor_q,
+            "grader_queue": grader_q,
+        },
+    )
+
+
+async def _stream_text_words(reply: str):
+    """Split a tutor reply into small chunks and yield them with a tiny delay.
+
+    We stream the *guardrail-cleared* reply that was already written to the
+    submission row. That keeps leakage safety pre-checked; the SSE wire is
+    purely a presentation layer that gives the student a live-typing feel.
+    """
+    if not reply:
+        return
+    buf: list[str] = []
+    for char in reply:
+        buf.append(char)
+        if char == " " or char == "\n":
+            chunk = "".join(buf)
+            buf = []
+            yield chunk
+            await asyncio.sleep(SSE_CHUNK_DELAY_SECONDS)
+    if buf:
+        yield "".join(buf)
+
+
+@router.get("/attempts/{attempt_id}/stream")
+async def stream_attempt(
+    attempt_id: int,
+    submission: int,
+    request: Request,
+    user: User = Depends(require_login),
+) -> Response:
+    """SSE endpoint that streams a submission's tutor reply token-by-token.
+
+    The submit POST persists the guardrail-cleared tutor reply, then returns
+    a placeholder turn that opens this stream. HTMX's ``sse-swap`` consumes
+    the events and assembles the text into the tutor reply slot.
+    """
+    engine = get_engine()
+    # Verify ownership of the attempt before exposing the submission's reply.
+    _attempt, _question = _load_attempt_for_user(engine, attempt_id, user.id)
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, attempt_id, tutor_reply_md "
+                "FROM submissions WHERE id = :id"
+            ),
+            {"id": submission},
+        ).fetchone()
+    if row is None or row.attempt_id != attempt_id:
+        raise HTTPException(status_code=404, detail="submission not found")
+
+    reply = row.tutor_reply_md or ""
+
+    def _sse_event(event: str, data: str) -> bytes:
+        # SSE wire format: each event is one or more `field: value\n` lines
+        # terminated by a blank line. We escape internal newlines as separate
+        # data lines so multi-line tutor replies render correctly.
+        lines = [f"event: {event}"]
+        for line in data.split("\n"):
+            lines.append(f"data: {line}")
+        return ("\n".join(lines) + "\n\n").encode("utf-8")
+
+    async def event_gen():
+        async for chunk in _stream_text_words(reply):
+            if await request.is_disconnected():
+                return
+            yield _sse_event("tutor-chunk", chunk)
+        yield _sse_event("tutor-done", "")
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/tokens/{token_id}/receipt")

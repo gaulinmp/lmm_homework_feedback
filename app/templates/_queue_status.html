@@ -1,0 +1,14 @@
+{# Polled queue-position banner.
+
+Rendered above the submit form while one of this user's submissions is in
+flight. The position counts the local user's own request plus any other
+requests waiting on the tutor / grader role buckets.
+#}
+{% if in_flight %}
+<div class="queue-banner" role="status">
+  <span class="queue-spinner" aria-hidden="true"></span>
+  <span class="queue-text">
+    Your submission is being graded. You are #{{ position }} in line.
+  </span>
+</div>
+{% endif %}
