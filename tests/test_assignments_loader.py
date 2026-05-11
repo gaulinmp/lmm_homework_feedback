@@ -165,6 +165,36 @@ def test_unknown_category_raises(tmp_path: Path, engine: Engine):
         load_assignment(engine, path)
 
 
+def test_missing_frontmatter_raises(tmp_path: Path, engine: Engine):
+    """A markdown file with no frontmatter must fail the loader."""
+    bad = "no frontmatter here\n\n## Question q1\n```yaml\nqid: q1\n```\nbody"
+    path = _write(tmp_path, bad, name="no_fm.md")
+    with pytest.raises(ValueError, match="frontmatter"):
+        load_assignment(engine, path)
+
+
+def test_missing_slug_raises(tmp_path: Path, engine: Engine):
+    bad = _FIXTURE.replace("slug: demo\n", "")
+    path = _write(tmp_path, bad, name="no_slug.md")
+    with pytest.raises(ValueError, match="slug"):
+        load_assignment(engine, path)
+
+
+def test_duplicate_qid_raises(tmp_path: Path, engine: Engine):
+    bad = _FIXTURE.replace("qid: q2", "qid: q1")
+    path = _write(tmp_path, bad, name="dup_qid.md")
+    with pytest.raises(ValueError, match="duplicate"):
+        load_assignment(engine, path)
+
+
+def test_question_missing_yaml_fence_raises(tmp_path: Path, engine: Engine):
+    bad = _FIXTURE.replace("```yaml\nqid: q2", "qid: q2")
+    bad = bad.replace("```\n\nUpload an image", "\nUpload an image")
+    path = _write(tmp_path, bad, name="no_fence.md")
+    with pytest.raises(ValueError, match="yaml"):
+        load_assignment(engine, path)
+
+
 def test_repo_assignment_loads(engine: Engine):
     repo_file = Path(__file__).resolve().parent.parent / "assignments" / "week3_visualization.md"
     if not repo_file.exists():

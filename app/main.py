@@ -6,9 +6,12 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth import CSRFMiddleware, LoginRequired
 from app.config import PROJECT_ROOT
+from app.logging_config import configure_logging
 from app.routes import admin as admin_routes
 from app.routes import auth as auth_routes
 from app.routes import student as student_routes
+
+configure_logging()
 
 app = FastAPI(title="ADA Homework Tutor", version="0.1.0")
 

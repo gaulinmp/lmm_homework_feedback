@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.db import get_engine
+from app.logging_config import append_llm_sidecar
 
 
 PROVIDER_CLASSES: dict[str, str] = {
@@ -270,6 +271,7 @@ class LLMRouter:
         }
         content_json = json.dumps(payload, default=str, ensure_ascii=False)
 
+        created_at = datetime.now(timezone.utc).isoformat()
         engine = get_engine()
         with engine.begin() as conn:
             conn.execute(
@@ -292,6 +294,22 @@ class LLMRouter:
                     "tin": tokens_in,
                     "tout": tokens_out,
                     "lat": latency_ms,
-                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "ts": created_at,
                 },
             )
+
+        append_llm_sidecar(
+            {
+                "ts": created_at,
+                "attempt_id": attempt_id,
+                "submission_id": submission_id,
+                "role_bucket": role_bucket,
+                "provider": provider_name,
+                "model": model,
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "latency_ms": latency_ms,
+                "error": error,
+                "payload": payload,
+            }
+        )

@@ -1,0 +1,32 @@
+[Unit]
+Description=ADA Homework Tutor — llama.cpp model server
+After=network.target
+
+[Service]
+Type=exec
+User=tutor
+Group=tutor
+WorkingDirectory=/home/tutor/llm_homework_tutor
+EnvironmentFile=-/home/tutor/llm_homework_tutor/.env.llama
+Environment=PATH=/usr/local/bin:/usr/bin
+ExecStart=/home/tutor/llm_homework_tutor/scripts/llama_server.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tutor-llama
+
+# Don't bind to anything except loopback. Combined with the host firewall,
+# this keeps the model server unreachable from outside the box.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

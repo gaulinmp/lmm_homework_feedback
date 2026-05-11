@@ -1,0 +1,46 @@
+# Caddy reverse proxy for the ADA Homework Tutor.
+#
+# Place at /etc/caddy/Caddyfile (or include from there). Caddy will
+# auto-provision the TLS cert on first start. The FastAPI app listens on
+# 127.0.0.1:8001 (see scripts/start_server.sh, deploy/tutor-app.service);
+# llama-server on 127.0.0.1:8080 is NOT proxied — it must remain LAN-internal.
+
+tutor.example.edu {
+    encode zstd gzip
+
+    # Forward all traffic to the FastAPI app. uvicorn is started with
+    # --proxy-headers + --forwarded-allow-ips=127.0.0.1, so it will trust the
+    # X-Forwarded-* headers caddy adds.
+    reverse_proxy 127.0.0.1:8001 {
+        # SSE streaming (/attempts/{id}/stream) needs flushing and a generous
+        # idle timeout.
+        flush_interval -1
+        transport http {
+            read_timeout 5m
+            write_timeout 5m
+        }
+    }
+
+    # Reasonable upload cap that matches the per-qtype byte limits in
+    # app.config (5 MB excel is the largest).
+    request_body {
+        max_size 8MB
+    }
+
+    # Basic hygiene headers. Stricter CSP can come later.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/tutor.access.log {
+            roll_size 100mb
+            roll_keep 14
+        }
+        format json
+    }
+}

@@ -1,0 +1,34 @@
+[Unit]
+Description=ADA Homework Tutor — FastAPI app (uvicorn)
+After=network.target tutor-llama.service
+Wants=tutor-llama.service
+
+[Service]
+Type=exec
+User=tutor
+Group=tutor
+WorkingDirectory=/home/tutor/llm_homework_tutor
+EnvironmentFile=-/home/tutor/llm_homework_tutor/.env
+Environment=PATH=/home/tutor/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=/home/tutor/llm_homework_tutor/scripts/start_server.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tutor-app
+
+# Hardening — see systemd.exec(5).
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/tutor/llm_homework_tutor/data
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

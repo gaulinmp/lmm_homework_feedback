@@ -1,4 +1,4 @@
-.PHONY: help install dev test backup load user verify audit init-db
+.PHONY: help install dev test backup load load-test user verify audit init-db
 
 # Default target: show help instead of running install.
 .DEFAULT_GOAL := help
@@ -10,8 +10,9 @@ help:
 	@echo "  init-db    Initialize the SQLite database"
 	@echo "  dev        Run the FastAPI app with --reload (override port: 'make dev PORT=9000')"
 	@echo "  test       Run the test suite"
-	@echo "  backup     Backup data/tutor.db into BACKUP_DIR (default: ~/Dropbox/backups/llm_homework_tutor)"
+	@echo "  backup     Snapshot data/tutor.db via scripts/backup.sh into BACKUP_DIR"
 	@echo "  load       Load assignments/*.md into the database"
+	@echo "  load-test  Run the locust load test (LOCUST_USERS, LOCUST_SPAWN_RATE, LOCUST_RUN_TIME)"
 	@echo "  user       Add a user: 'make user USER=foo [ROLE=admin]'"
 	@echo "  verify     Verify a proof token: 'make verify TOKEN=...'"
 	@echo "  audit      Dump LLM exchange: 'make audit ID=<attempt_id>' or 'make audit USER=<username>'"
@@ -29,17 +30,27 @@ dev:
 test:
 	uv run pytest
 
-# Backup the SQLite DB into the Dropbox folder via the .backup command.
-# Override BACKUP_DIR if you want it elsewhere.
-BACKUP_DIR ?= $(HOME)/Dropbox/backups/llm_homework_tutor
+# Snapshot the SQLite DB. scripts/backup.sh respects BACKUP_DIR + RETAIN env.
+BACKUP_DIR ?= $(HOME)/Dropbox/llm_homework_tutor_backups
 backup:
-	mkdir -p "$(BACKUP_DIR)"
-	sqlite3 data/tutor.db ".backup '$(BACKUP_DIR)/tutor-$$(date +%Y%m%d-%H%M%S).db'"
+	BACKUP_DIR="$(BACKUP_DIR)" bash scripts/backup.sh
 
 load:
 	uv run python cli/load_assignments.py
 
-# Stubs — wired up in later phases.
+# Locust load test against a running staging server.
+# Override LOCUST_USERS, LOCUST_SPAWN_RATE, LOCUST_RUN_TIME, LOCUST_HOST.
+LOCUST_HOST       ?= http://127.0.0.1:8000
+LOCUST_USERS      ?= 50
+LOCUST_SPAWN_RATE ?= 5
+LOCUST_RUN_TIME   ?= 2m
+load-test:
+	uv run locust -f scripts/locust_students.py \
+		--host=$(LOCUST_HOST) \
+		--headless \
+		-u $(LOCUST_USERS) \
+		-r $(LOCUST_SPAWN_RATE) \
+		-t $(LOCUST_RUN_TIME)
 
 ROLE ?= student
 user:
