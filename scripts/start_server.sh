@@ -1,19 +1,30 @@
 #!/usr/bin/env bash
-# Starts llama-server with an OpenAI-compatible API on http://localhost:8080
-# LangChain connects to this endpoint.
-
-LLAMA_DIR="$HOME/Dropbox/Documents/Programming/AI/llama.cpp/build/bin/"
-LLAMA_BIN="$LLAMA_DIR/llama-server"
-
-cd "$LLAMA_DIR"
-
-exec "$LLAMA_BIN" \
-    -hf unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_XL \
-    --ctx-size 8192 \
-    --temp 1.0 \
-    --top-p 0.95 \
-    --top-k 64 \
-    --port 8080
-
-# unsloth/Qwen3.6-27B-GGUF:UD-Q4_K_XL
+# Start the FastAPI app under uvicorn with 2 workers.
 #
+# § Key decision: two workers, not one. LLM calls are async-bound, so two
+# workers gives free failover if one dies. Workers share the SQLite DB via
+# WAL mode; that's enabled in app.db.make_engine.
+#
+# This script is invoked by deploy/tutor-app.service. Bind address is loopback
+# only — caddy terminates TLS and reverse-proxies (see deploy/caddyfile).
+
+set -euo pipefail
+
+APP_DIR="${APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$APP_DIR"
+
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-8001}"
+WORKERS="${WORKERS:-2}"
+
+# Make structured logging the default in service mode (override with LOG_JSON=0).
+export LOG_JSON="${LOG_JSON:-1}"
+export ENV="${ENV:-prod}"
+
+exec uv run uvicorn app.main:app \
+    --host "$HOST" \
+    --port "$PORT" \
+    --workers "$WORKERS" \
+    --proxy-headers \
+    --forwarded-allow-ips "127.0.0.1" \
+    --no-access-log
