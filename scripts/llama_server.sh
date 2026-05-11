@@ -12,7 +12,8 @@ set -euo pipefail
 
 LLAMA_DIR="${LLAMA_DIR:-$HOME/Dropbox/Documents/Programming/AI/llama.cpp/build/bin}"
 LLAMA_BIN="${LLAMA_BIN:-$LLAMA_DIR/llama-server}"
-LLAMA_MODEL="${LLAMA_MODEL:-unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_XL}"
+#LLAMA_MODEL="${LLAMA_MODEL:-unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_XL}"
+LLAMA_MODEL="${LLAMA_MODEL:-unsloth/gemma-4-E4B-it-GGUF:UD-Q4_K_XL}"
 LLAMA_HOST="${LLAMA_HOST:-127.0.0.1}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 LLAMA_CTX="${LLAMA_CTX:-8192}"
