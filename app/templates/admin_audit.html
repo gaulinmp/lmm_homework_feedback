@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if view == 'attempt' %}Audit attempt {{ attempt.id }}
+  {% else %}Audit user {{ target_user.username }}
+  {% endif %}
+  — Admin
+{% endblock %}
+{% block content %}
+<section class="audit">
+  {% if view == 'user' %}
+    <h2>Audit — user {{ target_user.username }} (id {{ target_user.id }})</h2>
+    {% if attempts %}
+    <table class="audit-attempts">
+      <thead>
+        <tr>
+          <th>Attempt</th>
+          <th>Assignment / Question</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Started</th>
+          <th>Completed</th>
+          <th>Proof</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in attempts %}
+        <tr>
+          <td>{{ a.id }}</td>
+          <td><code>{{ a.assignment_slug }}</code> / <code>{{ a.qid }}</code></td>
+          <td>{{ a.status }}</td>
+          <td>{{ '%.2f' % a.final_score if a.final_score is not none else '—' }}</td>
+          <td>{{ a.started_at }}</td>
+          <td>{{ a.completed_at or '—' }}</td>
+          <td>
+            {% if a.proof_token_id %}
+              <a href="/tokens/{{ a.proof_token_id }}/receipt">#{{ a.proof_token_id }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td><a href="/admin/audit/attempt/{{ a.id }}">view exchange</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>(no attempts for this user)</p>
+    {% endif %}
+  {% else %}
+    <h2>Audit — attempt {{ attempt.id }}</h2>
+    <p class="audit-meta">
+      User <code>{{ attempt.username }}</code> · assignment
+      <code>{{ attempt.assignment_slug }}</code> · question
+      <code>{{ attempt.qid }}</code> · status {{ attempt.status }}
+      {% if attempt.proof_token_id %}
+        · <a href="/tokens/{{ attempt.proof_token_id }}/receipt">proof receipt</a>
+      {% endif %}
+    </p>
+
+    {% if messages %}
+    <ol class="audit-messages">
+      {% for m in messages %}
+      <li class="audit-msg audit-bucket-{{ m.role_bucket }}">
+        <header>
+          <span class="msg-bucket">{{ m.role_bucket }}</span>
+          <span class="msg-role">{{ m.role }}</span>
+          <span class="msg-prov">{{ m.provider }}/{{ m.model }}</span>
+          {% if m.turn_index is not none %}
+            <span class="msg-turn">turn {{ m.turn_index }}</span>
+          {% endif %}
+          {% if m.latency_ms is not none %}
+            <span class="msg-latency">{{ m.latency_ms }} ms</span>
+          {% endif %}
+        </header>
+        <pre class="msg-content">{{ m.content }}</pre>
+        {% if m.tool_name %}
+        <p class="msg-tool">tool: <code>{{ m.tool_name }}</code> args: <code>{{ m.tool_args_json }}</code></p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p>(no LLM messages recorded for this attempt)</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

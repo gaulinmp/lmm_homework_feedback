@@ -54,7 +54,11 @@ turn to #transcript via an out-of-band swap.
   </form>
   {% elif attempt.status == 'passed' %}
   <p class="status-passed">
-    Correct — attempt closed. <a href="/">Pick another assignment.</a>
+    Correct — attempt closed.
+    {% if attempt.proof_token_id %}
+    <a href="/tokens/{{ attempt.proof_token_id }}/receipt">View proof receipt.</a>
+    {% endif %}
+    <a href="/">Pick another assignment.</a>
   </p>
   {% elif attempt.status == 'exhausted' %}
   <p class="status-exhausted">

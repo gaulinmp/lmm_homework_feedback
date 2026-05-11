@@ -266,7 +266,7 @@ def test_admin_route_blocks_students(client, demo_user):  # noqa: ARG001
         follow_redirects=False,
     )
     assert r.status_code == 303
-    r = client.get("/admin/audit/anything", follow_redirects=False)
+    r = client.get("/admin/audit/1", follow_redirects=False)
     assert r.status_code == 403
 
 
@@ -277,9 +277,11 @@ def test_admin_route_allows_admin(client, demo_admin):  # noqa: ARG001
         follow_redirects=False,
     )
     assert r.status_code == 303
-    r = client.get("/admin/audit/x/y", follow_redirects=False)
+    # Admin can hit the user-audit view; the admin's own user id is the only
+    # one we know exists in this fixture.
+    r = client.get(f"/admin/audit/{demo_admin.id}", follow_redirects=False)
     assert r.status_code == 200
-    assert "x/y" in r.text
+    assert "Audit" in r.text
 
 
 # ---------------------------------------------------------------------------

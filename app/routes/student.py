@@ -19,6 +19,7 @@ from app.db import get_engine
 from app.llm.grader import GraderState, build_grader_graph
 from app.llm.router import LLMRouter
 from app.picker import pick_next_question
+from app.proof import _b64url_encode, _canonical_json
 from app.templating import templates
 from app.uploads import UploadError, validate_and_store
 
@@ -260,6 +261,46 @@ async def submit_attempt(
     ctx["new_turn"] = new_submission
 
     return templates.TemplateResponse(request, "_turn.html", ctx)
+
+
+@router.get("/tokens/{token_id}/receipt")
+def token_receipt(
+    token_id: int,
+    request: Request,
+    user: User = Depends(require_login),
+) -> Response:
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT pt.id, pt.attempt_id, pt.payload_json, pt.hmac_sig, "
+                "       pt.issued_at, a.user_id "
+                "FROM proof_tokens pt JOIN attempts a ON a.id = pt.attempt_id "
+                "WHERE pt.id = :i"
+            ),
+            {"i": token_id},
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="token not found")
+    if row.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=404, detail="token not found")
+
+    payload = json.loads(row.payload_json)
+    payload_b64 = _b64url_encode(_canonical_json(payload))
+    token_str = f"{payload_b64}.{row.hmac_sig}"
+    sid = request.cookies.get(SESSION_COOKIE_NAME, "")
+    return templates.TemplateResponse(
+        request,
+        "receipt.html",
+        {
+            "user": user,
+            "csrf_token": csrf_token_for(sid),
+            "token": token_str,
+            "payload": payload,
+            "payload_pretty": json.dumps(payload, indent=2, sort_keys=True),
+            "issued_at": row.issued_at,
+        },
+    )
 
 
 __all__ = ["router", "get_router"]
