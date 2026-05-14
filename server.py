@@ -9,6 +9,7 @@
 import os
 import re
 from pathlib import Path
+from pprint import pprint
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -29,7 +30,7 @@ def parse_markdown_question(filepath: Path, assignment_id: int):
         lines = f.readlines()
 
     question = {
-        "question_id": filepath.stem,
+        "question_id": f"{filepath.parent.name}/{filepath.stem}",
         "assignment_id": assignment_id,
         "title": "",
         "content": {
@@ -47,6 +48,21 @@ def parse_markdown_question(filepath: Path, assignment_id: int):
     current_section = "text"
     text_lines = []
     sol_lines = []
+
+    # Parse YAML-like frontmatter
+    if lines and lines[0].strip() == "---":
+        end_idx = -1
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                end_idx = i
+                break
+        if end_idx != -1:
+            for i in range(1, end_idx):
+                line = lines[i].strip()
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    question[key.strip()] = val.strip()
+            lines = lines[end_idx + 1:]
 
     for line in lines:
         stripped = line.strip()
