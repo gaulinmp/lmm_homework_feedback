@@ -28,7 +28,7 @@ body {
   height: 100vh;
   overflow: hidden;
   display: flex;
-  background-image: 
+  background-image:
     radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
     radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
 }
@@ -61,7 +61,7 @@ body {
   margin-left: -350px;
 }
 
-.sidebar > div {
+.sidebar>div {
   flex-shrink: 0;
 }
 
@@ -94,10 +94,12 @@ body {
   line-height: 1.4;
 }
 
-input[type="password"], textarea {
+input[type="password"],
+input[type="text"],
+textarea {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(31, 45, 78, 0.6);
   border: 1px solid var(--border-color);
   border-radius: 0.5rem;
   color: var(--text-primary);
@@ -106,7 +108,9 @@ input[type="password"], textarea {
   transition: all 0.3s ease;
 }
 
-input[type="password"]:focus, textarea:focus {
+input[type="password"]:focus,
+input[type="text"]:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
@@ -214,6 +218,7 @@ input[type="password"] {
   color: var(--accent-primary);
   text-decoration: none;
 }
+
 .glass-card a:hover {
   text-decoration: underline;
 }
@@ -254,13 +259,16 @@ input[type="password"] {
 ::-webkit-scrollbar {
   width: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
@@ -273,8 +281,15 @@ input[type="password"] {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message.user {
@@ -375,12 +390,25 @@ input[type="password"] {
   animation: bounce 1.4s infinite ease-in-out both;
 }
 
-.dot:nth-child(1) { animation-delay: -0.32s; }
-.dot:nth-child(2) { animation-delay: -0.16s; }
+.dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1);
+  }
 }
 
 /* Accordion */

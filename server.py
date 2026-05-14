@@ -1,29 +1,12 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = [
-#     "fastapi",
-#     "uvicorn",
-# ]
+# dependencies = []
 # ///
 
 import os
 import re
+import json
 from pathlib import Path
-from pprint import pprint
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-
-app = FastAPI(title="Socratic Tutor Question API")
-
-# Configure CORS so the frontend (e.g., Vite dev server) can fetch from this API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for local development
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 def parse_markdown_question(filepath: Path, assignment_id: int):
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -158,25 +141,16 @@ def load_questions():
         
     return questions_db, assignments_list
 
+import json
+
 QUESTIONS, ASSIGNMENTS = load_questions()
 
-@app.get("/api/assignments")
-def list_assignments():
-    """List all assignments and their questions."""
-    return ASSIGNMENTS
-
-@app.get("/api/questions")
-def list_questions():
-    """List all available questions."""
-    return [{"question_id": q_id, "assignment_id": q.get("assignment_id"), "title": q["title"]} for q_id, q in QUESTIONS.items()]
-
-@app.get("/api/questions/{question_id}")
-def get_question(question_id: str):
-    """Get a specific question by ID."""
-    if question_id not in QUESTIONS:
-        raise HTTPException(status_code=404, detail="Question not found")
-    return QUESTIONS[question_id]
-
 if __name__ == "__main__":
-    print("Starting Socratic Tutor Question API on http://127.0.0.1:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    db = {
+        "assignments": ASSIGNMENTS,
+        "questions": QUESTIONS
+    }
+    with open("questions/questions.json", "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2)
+    print("Generated questions/questions.json")
+

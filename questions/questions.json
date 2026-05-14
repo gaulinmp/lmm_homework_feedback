@@ -1,0 +1,176 @@
+{
+  "assignments": [
+    {
+      "assignment_id": 1,
+      "title": "Week 1 - Introduction",
+      "questions": [
+        {
+          "question_id": "w1_q1_discrete",
+          "title": "Discrete Variables"
+        },
+        {
+          "question_id": "w1_q2_continuous",
+          "title": "Continuous Variables"
+        },
+        {
+          "question_id": "w1_q3_excel_vs_python",
+          "title": "Excel vs Python"
+        },
+        {
+          "question_id": "w1_q4_audit_analytics",
+          "title": "Analytics in Audit"
+        },
+        {
+          "question_id": "w1_q5_tax_analytics",
+          "title": "Analytics in Tax"
+        },
+        {
+          "question_id": "w1_q6_managerial_analytics",
+          "title": "Managerial Analytics"
+        },
+        {
+          "question_id": "w1_q7_financial_analytics",
+          "title": "Financial Analytics"
+        }
+      ]
+    }
+  ],
+  "questions": {
+    "w1_q1_discrete": {
+      "question_id": "w1_q1_discrete",
+      "assignment_id": 1,
+      "title": "Discrete Variables",
+      "content": {
+        "text": "Describe what a categorical variable is and provide an example of one.",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [
+          "Must correctly define a categorical variable: a variable with discrete, finite, values, possibly non-numeric.",
+          "Must provide an example of a categorical variable."
+        ],
+        "hints": [
+          "Think about what type of variable a firm's industry is.",
+          "Consider how you would record a firm's headquarters state in an excel spreadsheet"
+        ],
+        "solution_explanation": "A categorical variables is one that has discrete values, like categories, types, or groups. Examples include industry, state, or the tone of a text (positive, negative, neutral), but could also be \"bins\" of a continuous variable, like size deciles, or above/below median value. These are typically what classifiers are meant to predict."
+      }
+    },
+    "w1_q2_continuous": {
+      "question_id": "w1_q2_continuous",
+      "assignment_id": 1,
+      "title": "Continuous Variables",
+      "content": {
+        "text": "Describe what a continuous variable is, and provide an example of one.",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [
+          "The student must correctly define a continuous variable: a numeric variable with continuous (e.g. smooth) values.",
+          "The student must provide an example of a continuous variable."
+        ],
+        "hints": [
+          "Think about what type of variable \"Revenue\" is.",
+          "Consider the difference between a variable measuring Revenue and one denoting Industry."
+        ],
+        "solution_explanation": "A continuous variable is one that takes a continuous value, as a measure of some quantity. \n\nExamples include Revenue, the latitude and longitude of a firm's branches, or time. These are typically what regressions are meant to predict."
+      }
+    },
+    "w1_q3_excel_vs_python": {
+      "question_id": "w1_q3_excel_vs_python",
+      "assignment_id": 1,
+      "title": "Excel vs Python",
+      "content": {
+        "text": "Compare the strengths and weaknesses of Excel and Python for data analytics in accounting.",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [
+          "Must identify Excel's strength in quick viewing and editing, handling small datasets, or basic modeling capabilities.",
+          "Must identify Python's strength in automation, large datasets, advanced modeling capabilites, or flexibility of capabilities."
+        ],
+        "hints": [
+          "Think about which tool handles 10 million rows better.",
+          "Which tool is easier to just open and look at, and edit a 10-row table?",
+          "Which tool can handle both data scraping and report generation?"
+        ],
+        "solution_explanation": "Excel is great for quick exploration, ad-hoc analysis, and small datasets due to its ubiquitous adoption in Accounting. Python is better at handling larger datasets, enforcing reproducible outputs (being in code), automating repetitive tasks, and building advanced machine learning models, and being the \"glue\" between disparate systems and parts of a whole solution."
+      }
+    },
+    "w1_q4_audit_analytics": {
+      "question_id": "w1_q4_audit_analytics",
+      "assignment_id": 1,
+      "title": "Analytics in Audit",
+      "content": {
+        "text": "What are some examples of how data analytics is changing the audit profession?",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [],
+        "hints": [
+          "Think about how many transactions an auditor used to look at versus now.",
+          "What happens when you can test 100% of journal entries?"
+        ],
+        "solution_explanation": "Data analytics allows auditors to move away from random sampling to testing entire populations of transactions. This comprehensive approach helps in better identifying anomalies, assessing risks, and detecting potential fraud, ultimately increasing audit quality. Advanced analytical capabilities also allow for better anomoly detection to facilitate \"audit by exception.\" Better AI capabilities are also allowing for more automation of tasks like invoice processing."
+      }
+    },
+    "w1_q5_tax_analytics": {
+      "question_id": "w1_q5_tax_analytics",
+      "assignment_id": 1,
+      "title": "Analytics in Tax",
+      "content": {
+        "text": "What are some examples of how data analytics is changing tax accounting?",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [],
+        "hints": [
+          "How can visualizing data help a tax department?",
+          "Think about tracking where revenue is generated globally."
+        ],
+        "solution_explanation": "In tax accounting, data analytics is used to model the tax implications of different business decisions (e.g., supply chain changes), simulate and optimize tax planning strategies, and automate the extraction of tax-relevant data from client documents."
+      }
+    },
+    "w1_q6_managerial_analytics": {
+      "question_id": "w1_q6_managerial_analytics",
+      "assignment_id": 1,
+      "title": "Managerial Analytics",
+      "content": {
+        "text": "What are some examples of data analytics used in management accounting?",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [],
+        "hints": [
+          "What kind of tasks generally fall under the managerial accounting umbrella? Which of those tasks benefit from better data and analytics?",
+          "What kind of data and approaches are used to set budgets?"
+        ],
+        "solution_explanation": "Managerial accountants use data analytics for internal, often forward-looking, decision-making. Examples include cost estimation, cost optimization, performance measurement, simulations and \"what-if\" analyses, and budgeting."
+      }
+    },
+    "w1_q7_financial_analytics": {
+      "question_id": "w1_q7_financial_analytics",
+      "assignment_id": 1,
+      "title": "Financial Analytics",
+      "content": {
+        "text": "What are some examples of data analytics used in financial accounting?",
+        "dataset_url": "",
+        "parameters": {}
+      },
+      "rubric": {
+        "requirements": [],
+        "hints": [
+          "What kind of tasks generally fall under the financial accounting umbrella?",
+          "What kind of things could be adopted to speed up the financial close?"
+        ],
+        "solution_explanation": "Financial accounting analytics increasingly uses data analytics and automation to improve the speed and quality of financial reporting and analysis, compliance testing, risk estimation and analysis, and conduct market and investor research."
+      }
+    }
+  }
+}

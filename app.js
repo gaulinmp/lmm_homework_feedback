@@ -28,7 +28,7 @@ const pasteModalCloseBtn = document.getElementById('paste-modal-close-btn');
 
 // --- State Variables ---
 let geminiApiKey = localStorage.getItem('socratic_gemini_api_key') || '';
-let serverUrl = localStorage.getItem('socratic_server_url') || 'http://127.0.0.1:8000';
+let serverUrl = localStorage.getItem('socratic_server_url') || '.';
 let currentQuestion = null;
 let currentImageBase64 = null;
 let graphApp = null;
@@ -46,7 +46,7 @@ if (serverUrl && apiUrlInput) {
 
 saveKeyBtn.addEventListener('click', () => {
   geminiApiKey = apiKeyInput.value.trim();
-  const newServerUrl = apiUrlInput.value.trim() || 'http://127.0.0.1:8000';
+  const newServerUrl = apiUrlInput.value.trim() || '.';
   const urlChanged = newServerUrl !== serverUrl;
   serverUrl = newServerUrl;
 
@@ -201,11 +201,22 @@ pasteModalCloseBtn.addEventListener('click', () => {
   chatInput.focus();
 });
 
-// --- App Initialization & Assignments ---
+// --- API Fetch ---
+let questionsDbCache = null;
+
+async function fetchDb() {
+  if (!questionsDbCache) {
+    const url = serverUrl.endsWith('/') ? `${serverUrl}questions.json` : `${serverUrl}/questions.json`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    questionsDbCache = await response.json();
+  }
+  return questionsDbCache;
+}
+
 async function fetchAssignments() {
-  const response = await fetch(`${serverUrl}/api/assignments`);
-  if (!response.ok) throw new Error(`API Error: ${response.status}`);
-  return await response.json();
+  const db = await fetchDb();
+  return db.assignments;
 }
 
 function renderAssignments(assignments) {
@@ -332,13 +343,14 @@ function appendMessage(role, content, imageBase64 = null) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// --- API Fetch ---
+// --- API Fetch Question ---
 async function fetchQuestionAPI(questionId = 'q_week3_linear_regression') {
-  const response = await fetch(`${serverUrl}/api/questions/${questionId}`);
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  const db = await fetchDb();
+  const question = db.questions[questionId];
+  if (!question) {
+    throw new Error(`Question not found`);
   }
-  return await response.json();
+  return question;
 }
 
 async function loadQuestion(questionId = null) {
