@@ -11,3 +11,7 @@ wheels/
 
 # Node files
 node_modules/
+
+# OS System files
+.DS_Store
+desktop.ini

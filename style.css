@@ -404,6 +404,16 @@ input[type="password"] {
   transition: background 0.2s;
 }
 
+.accordion-header span:last-child {
+  transition: transform 0.2s ease;
+  transform: rotate(-90deg);
+  display: inline-block;
+}
+
+.accordion-item.active .accordion-header span:last-child {
+  transform: rotate(0deg);
+}
+
 .accordion-header:hover {
   background: rgba(255, 255, 255, 0.1);
 }

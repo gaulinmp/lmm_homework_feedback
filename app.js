@@ -7,6 +7,9 @@ import { IndexedDBMemorySaver } from './indexedDbSaver.js';
 
 // --- UI Elements ---
 const apiKeyInput = document.getElementById('api-key-input');
+const apiUrlInput = document.getElementById('api-url-input');
+const configAccordion = document.getElementById('config-accordion');
+const configHeader = document.getElementById('config-header');
 const saveKeyBtn = document.getElementById('save-key-btn');
 const chatMessages = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
@@ -25,35 +28,88 @@ const pasteModalCloseBtn = document.getElementById('paste-modal-close-btn');
 
 // --- State Variables ---
 let geminiApiKey = localStorage.getItem('socratic_gemini_api_key') || '';
+let serverUrl = localStorage.getItem('socratic_server_url') || 'http://127.0.0.1:8000';
 let currentQuestion = null;
 let currentImageBase64 = null;
 let graphApp = null;
 let threadId = null; // Will be set per question
 
 
-// Restore API Key
+// Restore Configuration
 if (geminiApiKey) {
   apiKeyInput.value = geminiApiKey;
   enableChat();
 }
+if (serverUrl && apiUrlInput) {
+  apiUrlInput.value = serverUrl;
+}
 
 saveKeyBtn.addEventListener('click', () => {
   geminiApiKey = apiKeyInput.value.trim();
+  const newServerUrl = apiUrlInput.value.trim() || 'http://127.0.0.1:8000';
+  const urlChanged = newServerUrl !== serverUrl;
+  serverUrl = newServerUrl;
+
   if (geminiApiKey) {
     localStorage.setItem('socratic_gemini_api_key', geminiApiKey);
+    localStorage.setItem('socratic_server_url', serverUrl);
     enableChat();
-    appendMessage('system', 'API Key saved. You can now start the assignment.');
+    appendMessage('system', 'Configuration saved. You can now start the assignment.');
+
+    // Close accordion
+    if (configAccordion) {
+      configAccordion.classList.remove('active');
+    }
+
+    if (urlChanged) {
+      fetchAssignments()
+        .then(renderAssignments)
+        .catch(e => {
+          document.getElementById('assignments-tree').innerHTML = '<p class="loading-text" style="color: var(--danger)">Failed to load assignments from new URL</p>';
+        });
+    }
   }
 });
+
+if (configHeader && configAccordion) {
+  configHeader.addEventListener('click', () => {
+    configAccordion.classList.toggle('active');
+  });
+}
 
 sidebarToggleBtn.addEventListener('click', () => {
   if (sidebar) sidebar.classList.toggle('collapsed');
 });
 
+function updateProgressCounts() {
+  const accordionItems = document.querySelectorAll('#assignments-tree .accordion-item');
+  accordionItems.forEach(item => {
+    const body = item.querySelector('.accordion-body');
+    if (!body) return;
+
+    const questions = body.querySelectorAll('.question-btn');
+    if (questions.length === 0) return;
+
+    const total = questions.length;
+    let completed = 0;
+    questions.forEach(q => {
+      if (q.textContent.includes('✅')) {
+        completed++;
+      }
+    });
+
+    const titleSpan = item.querySelector('.accordion-header span:first-child');
+    if (titleSpan && titleSpan.dataset.baseTitle) {
+      titleSpan.textContent = `${titleSpan.dataset.baseTitle} (${completed}/${total})`;
+    }
+  });
+}
+
 function markQuestionAsCompleteInUI(questionId) {
   const btn = document.querySelector(`.question-btn[data-question-id="${questionId}"]`);
   if (btn && !btn.textContent.includes('✅')) {
     btn.textContent = btn.textContent + ' ✅ 💯';
+    updateProgressCounts();
   }
 }
 
@@ -61,6 +117,7 @@ function unmarkQuestionAsCompleteInUI(questionId) {
   const btn = document.querySelector(`.question-btn[data-question-id="${questionId}"]`);
   if (btn && btn.textContent.includes('✅')) {
     btn.textContent = btn.textContent.replace(' ✅ 💯', '');
+    updateProgressCounts();
   }
 }
 
@@ -76,14 +133,14 @@ modalConfirmBtn.addEventListener('click', () => {
   confirmationModal.style.display = 'none';
   localStorage.removeItem('socratic_chat_history');
   chatMessages.innerHTML = '';
-  
+
   if (graphApp && threadId) {
     const memory = graphApp.checkpointer;
     if (memory && typeof memory.deleteThread === 'function') {
       memory.deleteThread(threadId);
     }
   }
-  
+
   threadId = 'socratic_session_' + Date.now();
   if (currentQuestion) {
     localStorage.removeItem(`socratic_complete_${currentQuestion.question_id}`);
@@ -92,7 +149,7 @@ modalConfirmBtn.addEventListener('click', () => {
     const questionText = `**${currentQuestion.title}**\n\n${currentQuestion.content.text}`;
     appendMessage('system', questionText);
   }
-  
+
   // Re-init graph so memory is fresh
   graphApp = null;
   initLangGraph();
@@ -127,7 +184,7 @@ let pasteAttemptCount = 0;
 chatInput.addEventListener('paste', (e) => {
   e.preventDefault();
   pasteAttemptCount++;
-  
+
   if (pasteAttemptCount >= 3) {
     pasteWarningModal.style.display = 'flex';
     pasteAttemptCount = 0; // Reset after showing
@@ -146,7 +203,7 @@ pasteModalCloseBtn.addEventListener('click', () => {
 
 // --- App Initialization & Assignments ---
 async function fetchAssignments() {
-  const response = await fetch('http://127.0.0.1:8000/api/assignments');
+  const response = await fetch(`${serverUrl}/api/assignments`);
   if (!response.ok) throw new Error(`API Error: ${response.status}`);
   return await response.json();
 }
@@ -161,9 +218,21 @@ function renderAssignments(assignments) {
     item.className = 'accordion-item';
     let isActive = false;
 
+    if (localStorage.getItem('socratic_last_expanded_week') == assignment.assignment_id) {
+      isActive = true;
+    }
+
+    const totalQuestions = assignment.questions.length;
+    let completedCount = 0;
+    assignment.questions.forEach(q => {
+      if (localStorage.getItem(`socratic_complete_${q.question_id}`) === 'true') {
+        completedCount++;
+      }
+    });
+
     item.innerHTML = `
       <div class="accordion-header">
-        <span>${assignment.title}</span>
+        <span data-base-title="${assignment.title.replace(/"/g, '&quot;')}">${assignment.title} (${completedCount}/${totalQuestions})</span>
         <span>▼</span>
       </div>
       <div class="accordion-body">
@@ -172,19 +241,21 @@ function renderAssignments(assignments) {
 
     const body = item.querySelector('.accordion-body');
     assignment.questions.forEach(q => {
+      console.log(q);
       const btn = document.createElement('button');
       btn.className = 'question-btn';
       btn.dataset.questionId = q.question_id;
-      
+
       let titleText = q.title;
       if (localStorage.getItem(`socratic_complete_${q.question_id}`) === 'true') {
-        titleText += ' ✅ 💯';
+        titleText += ' ✅';
       }
       btn.textContent = titleText;
-      
+
       if (currentQuestion && currentQuestion.question_id === q.question_id) {
         btn.classList.add('selected');
         isActive = true;
+        localStorage.setItem('socratic_last_expanded_week', assignment.assignment_id);
       }
       btn.addEventListener('click', () => {
         document.querySelectorAll('.question-btn').forEach(b => b.classList.remove('selected'));
@@ -198,6 +269,11 @@ function renderAssignments(assignments) {
 
     item.querySelector('.accordion-header').addEventListener('click', () => {
       item.classList.toggle('active');
+      if (item.classList.contains('active')) {
+        localStorage.setItem('socratic_last_expanded_week', assignment.assignment_id);
+      } else if (localStorage.getItem('socratic_last_expanded_week') == assignment.assignment_id) {
+        localStorage.removeItem('socratic_last_expanded_week');
+      }
     });
 
     accordion.appendChild(item);
@@ -258,7 +334,7 @@ function appendMessage(role, content, imageBase64 = null) {
 
 // --- API Fetch ---
 async function fetchQuestionAPI(questionId = 'q_week3_linear_regression') {
-  const response = await fetch(`http://127.0.0.1:8000/api/questions/${questionId}`);
+  const response = await fetch(`${serverUrl}/api/questions/${questionId}`);
   if (!response.ok) {
     throw new Error(`API Error: ${response.status} ${response.statusText}`);
   }
@@ -268,7 +344,7 @@ async function fetchQuestionAPI(questionId = 'q_week3_linear_regression') {
 async function loadQuestion(questionId = null) {
   const activeAssignmentSection = document.getElementById('active-assignment-section');
   if (activeAssignmentSection) activeAssignmentSection.style.display = 'block';
-  
+
   try {
     const storedQ = localStorage.getItem('socratic_current_question');
     if (storedQ && !questionId) {
@@ -325,13 +401,13 @@ async function initLangGraph() {
   const evaluatorNode = async (state) => {
     const sysPrompt = getEvaluatorPrompt(currentQuestion);
     const messages = [new SystemMessage(sysPrompt), ...state.messages];
-    
+
     try {
       const response = await model.invoke(messages);
       const content = response.content.trim().toUpperCase();
-      
+
       const isComplete = content.includes("YES");
-      
+
       return {
         isComplete: isComplete
       };
@@ -420,7 +496,7 @@ async function initLangGraph() {
     for (const msg of currentState.values.messages) {
       if (msg._getType() === 'system') continue;
       const role = msg._getType() === 'human' ? 'user' : 'tutor';
-      
+
       // Attempt to extract image url for re-render if it was sent as an array
       let content = msg.content;
       let imageBase64 = null;
@@ -429,7 +505,7 @@ async function initLangGraph() {
         const imgPart = content.find(p => p.type === 'image_url');
         content = textPart ? textPart.text : '';
         if (imgPart && imgPart.image_url) {
-           imageBase64 = typeof imgPart.image_url === 'string' ? imgPart.image_url : imgPart.image_url.url;
+          imageBase64 = typeof imgPart.image_url === 'string' ? imgPart.image_url : imgPart.image_url.url;
         }
       }
       appendMessage(role, content, imageBase64);
